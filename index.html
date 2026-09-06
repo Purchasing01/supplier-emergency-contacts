@@ -771,21 +771,30 @@ function fileToBase64(file){
 async function recognizeWithGemini(file, key){
   const b64 = await fileToBase64(file);
   const mimeType = file.type || 'image/png';
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
+  const url = 'https://generativelanguage.googleapis.com/v1beta2/interactions';
   const res = await fetch(url, {
     method:'POST',
     headers:{ 'Content-Type':'application/json', 'x-goog-api-key': key },
     body: JSON.stringify({
-      contents:[{ parts:[
-        { inline_data:{ mime_type: mimeType, data: b64 } },
-        { text:'Extract every supplier emergency contact visible in this image (contact list, business card, or email signature). Group multiple people under the same supplier when the image is clearly one company. Reply with a JSON array only: [{"supplier":"","name":"","role":"","phone":"","email":""}]. Leave a field as "" if it is not visible. Never invent information not shown in the image.' }
-      ]}],
-      generationConfig:{ responseMimeType:'application/json' }
+      model: GEMINI_MODEL,
+      input: [
+        { type:'image', mime_type: mimeType, data: b64 },
+        { type:'text', text:'Extract every supplier emergency contact visible in this image (contact list, business card, or email signature). Group multiple people under the same supplier when the image is clearly one company. Leave a field empty if it is not visible. Never invent information not shown in the image.' }
+      ],
+      response_format:[{
+        type:'text', mime_type:'application/json',
+        schema:{ type:'ARRAY', items:{ type:'OBJECT', properties:{
+          supplier:{type:'STRING'}, name:{type:'STRING'}, role:{type:'STRING'},
+          phone:{type:'STRING'}, email:{type:'STRING'}
+        }}}
+      }]
     })
   });
-  if(!res.ok){ const t=await res.text().catch(()=> ''); throw new Error('Gemini API '+res.status+' '+t.slice(0,180)); }
+  if(!res.ok){ const t=await res.text().catch(()=> ''); throw new Error('Gemini API '+res.status+' '+t.slice(0,220)); }
   const data = await res.json();
-  const text = data?.candidates?.[0]?.content?.parts?.map(p=>p.text||'').join('') || '';
+  const outStep = (data.steps||[]).slice().reverse().find(s=>s.type==='model_output');
+  const text = outStep ? outStep.content.filter(c=>c.type==='text').map(c=>c.text).join('') : '';
+  if(!text) throw new Error('Gemini returned no output ('+(data.status||'unknown status')+')');
   const clean = text.replace(/```json|```/g,'').trim();
   const arr = JSON.parse(clean);
   return Array.isArray(arr) ? arr : [arr];
@@ -807,7 +816,7 @@ function importScreenshotAI(file, key){
     openReview(mapped, 'Recognized with AI (Gemini)');
   }).catch(err=>{
     console.error(err);
-    toast('AI recognition failed — falling back to local recognition','err');
+    toast('AI: '+String(err.message||err).slice(0,140)+' — using local recognition','err');
     importScreenshotOCR(file);
   });
 }
