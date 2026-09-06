@@ -288,7 +288,7 @@ tbody tr:hover .row-actions{opacity:1;}
       <input id="search" type="text" placeholder="Search supplier, contact, phone or email…" autocomplete="off">
     </div>
     <button class="btn" id="btnImportFile"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/></svg>Import file</button>
-    <button class="btn sm ghost" id="btnAISettings" title="Set up free AI recognition (Google Gemini)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><path d="M12 3v3m0 12v3m9-9h-3M6 12H3m15.4-6.4-2.1 2.1M8.7 15.3l-2.1 2.1m0-12.8 2.1 2.1m9.7 9.7-2.1-2.1"/><circle cx="12" cy="12" r="3.5"/></svg></button>
+    <button class="btn sm ghost" id="btnAISettings" title="Set up free AI recognition (Groq)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><path d="M12 3v3m0 12v3m9-9h-3M6 12H3m15.4-6.4-2.1 2.1M8.7 15.3l-2.1 2.1m0-12.8 2.1 2.1m9.7 9.7-2.1-2.1"/><circle cx="12" cy="12" r="3.5"/></svg></button>
     <span class="paste-hint" title="Copy a screenshot, click anywhere on this page, then press Ctrl+V (Cmd+V on Mac)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/></svg>Paste a screenshot (Ctrl+V)</span>
     <button class="btn primary" id="btnAdd"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>Add contact</button>
     <div class="sep"></div>
@@ -687,7 +687,7 @@ function prettifyDomain(email){
 }
 
 function importScreenshot(file){
-  const key = getGeminiKey();
+  const key = getGroqKey();
   if(key) return importScreenshotAI(file, key);
   return importScreenshotOCR(file);
 }
@@ -751,14 +751,14 @@ function parseOCR(text){
 }
 
 /* ============================================================
-   IMPORT — AI RECOGNITION (Google Gemini, free tier)
-   Uses the person's own free Gemini API key (aistudio.google.com/apikey),
+   IMPORT — AI RECOGNITION (Groq, free tier)
+   Uses the person's own free Groq API key (console.groq.com/keys),
    kept only in this browser. No cost, no credit card.
    ============================================================ */
-const GEMINI_KEY_STORE = 'jsl_dir_gemini_key';
-const GEMINI_MODEL = 'gemini-2.5-flash';
-function getGeminiKey(){ try{ return localStorage.getItem(GEMINI_KEY_STORE) || ''; }catch(e){ return ''; } }
-function setGeminiKey(k){ try{ if(k) localStorage.setItem(GEMINI_KEY_STORE, k); else localStorage.removeItem(GEMINI_KEY_STORE); }catch(e){} }
+const GROQ_KEY_STORE = 'jsl_dir_groq_key';
+const GROQ_MODEL = 'meta-llama/llama-4-scout-17b-16e-instruct';
+function getGroqKey(){ try{ return localStorage.getItem(GROQ_KEY_STORE) || ''; }catch(e){ return ''; } }
+function setGroqKey(k){ try{ if(k) localStorage.setItem(GROQ_KEY_STORE, k); else localStorage.removeItem(GROQ_KEY_STORE); }catch(e){} }
 
 function fileToBase64(file){
   return new Promise((res,rej)=>{
@@ -768,52 +768,45 @@ function fileToBase64(file){
     r.readAsDataURL(file);
   });
 }
-async function recognizeWithGemini(file, key){
+async function recognizeWithGroq(file, key){
   const b64 = await fileToBase64(file);
   const mimeType = file.type || 'image/png';
-  const url = 'https://generativelanguage.googleapis.com/v1beta2/interactions';
-  const res = await fetch(url, {
+  const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
     method:'POST',
-    headers:{ 'Content-Type':'application/json', 'x-goog-api-key': key },
+    headers:{ 'Content-Type':'application/json', 'Authorization':'Bearer '+key },
     body: JSON.stringify({
-      model: GEMINI_MODEL,
-      input: [
-        { type:'image', mime_type: mimeType, data: b64 },
-        { type:'text', text:'Extract every supplier emergency contact visible in this image (contact list, business card, or email signature). Group multiple people under the same supplier when the image is clearly one company. Leave a field empty if it is not visible. Never invent information not shown in the image.' }
-      ],
-      response_format:[{
-        type:'text', mime_type:'application/json',
-        schema:{ type:'ARRAY', items:{ type:'OBJECT', properties:{
-          supplier:{type:'STRING'}, name:{type:'STRING'}, role:{type:'STRING'},
-          phone:{type:'STRING'}, email:{type:'STRING'}
-        }}}
-      }]
+      model: GROQ_MODEL,
+      response_format:{ type:'json_object' },
+      messages:[{ role:'user', content:[
+        { type:'text', text:'Extract every supplier emergency contact visible in this image (contact list, business card, or email signature). Group multiple people under the same supplier when the image is clearly one company. Reply with ONLY a JSON object of the form {"contacts":[{"supplier":"","name":"","role":"","phone":"","email":""}]}. Leave a field as "" if not visible. Never invent information not shown in the image.' },
+        { type:'image_url', image_url:{ url:'data:'+mimeType+';base64,'+b64 } }
+      ]}]
     })
   });
-  if(!res.ok){ const t=await res.text().catch(()=> ''); throw new Error('Gemini API '+res.status+' '+t.slice(0,220)); }
+  if(!res.ok){ const t=await res.text().catch(()=> ''); throw new Error('Groq API '+res.status+' '+t.slice(0,220)); }
   const data = await res.json();
-  const outStep = (data.steps||[]).slice().reverse().find(s=>s.type==='model_output');
-  const text = outStep ? outStep.content.filter(c=>c.type==='text').map(c=>c.text).join('') : '';
-  if(!text) throw new Error('Gemini returned no output ('+(data.status||'unknown status')+')');
+  const text = data?.choices?.[0]?.message?.content || '';
+  if(!text) throw new Error('Groq returned no output');
   const clean = text.replace(/```json|```/g,'').trim();
-  const arr = JSON.parse(clean);
+  const parsed = JSON.parse(clean);
+  const arr = Array.isArray(parsed) ? parsed : (parsed.contacts || parsed.items || []);
   return Array.isArray(arr) ? arr : [arr];
 }
 function importScreenshotAI(file, key){
   $('#modalMount').innerHTML = `<div class="modal">
-    <div class="modal-head"><div><h2>Reading with AI</h2><p>Sending the image to Google Gemini (free tier) for recognition</p></div></div>
+    <div class="modal-head"><div><h2>Reading with AI</h2><p>Sending the image to Groq (free tier) for recognition</p></div></div>
     <div class="modal-body"><div class="ocr-prog">
       <div class="spinner"></div><h3>Reading contacts…</h3>
-      <p>Using your free Gemini API key — the image is sent only to Google.</p>
+      <p>Using your free Groq API key — the image is sent only to Groq.</p>
     </div></div></div>`;
   showModal();
-  recognizeWithGemini(file, key).then(rows=>{
+  recognizeWithGroq(file, key).then(rows=>{
     const mapped = rows.map(r=>({
       supplier:(r.supplier||'').trim(), name:(r.name||'').trim(), role:(r.role||'').trim(),
       phone:cleanPhone(r.phone||''), email:(r.email||'').trim().toLowerCase(),
       category:'Ingredients', notes:'' })).filter(r=>r.supplier||r.name||r.email||r.phone);
     if(!mapped.length){ toast('AI could not find contacts in that image','err'); closeModal(); return; }
-    openReview(mapped, 'Recognized with AI (Gemini)');
+    openReview(mapped, 'Recognized with AI (Groq)');
   }).catch(err=>{
     console.error(err);
     toast('AI: '+String(err.message||err).slice(0,140)+' — using local recognition','err');
@@ -822,19 +815,19 @@ function importScreenshotAI(file, key){
 }
 
 function openAISettings(){
-  const key = getGeminiKey();
+  const key = getGroqKey();
   $('#modalMount').innerHTML = `<div class="modal">
     <div class="modal-head"><div><h2>AI recognition (free)</h2>
-      <p>Add a free Google Gemini API key to read screenshots with real AI instead of basic local recognition.</p></div>
+      <p>Add a free Groq API key to read screenshots with real AI instead of basic local recognition.</p></div>
       <button class="close-x" onclick="closeModal()">&times;</button></div>
     <div class="modal-body">
-      <div class="field"><label>Gemini API key</label>
-        <input id="ai-key" type="password" value="${esc(key)}" placeholder="AQ.Ab... or AIza..."></div>
+      <div class="field"><label>Groq API key</label>
+        <input id="ai-key" type="password" value="${esc(key)}" placeholder="gsk_..."></div>
       <div class="rv-note"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0;margin-top:1px"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
-        <span>Get a free key at <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener" style="color:var(--brand);font-weight:700">aistudio.google.com/apikey</a> — sign in with any Google account, no credit card needed. Saved only in this browser and sent only to Google to read the image you import. Without a key, screenshots still work using local, on-device recognition (a bit more basic).</span></div>
+        <span>Get a free key at <a href="https://console.groq.com/keys" target="_blank" rel="noopener" style="color:var(--brand);font-weight:700">console.groq.com/keys</a> — sign in with email, Google, or GitHub, no credit card needed. Saved only in this browser and sent only to Groq to read the image you import. Without a key, screenshots still work using local, on-device recognition (a bit more basic).</span></div>
     </div>
     <div class="modal-foot">
-      <button class="btn ghost" style="color:var(--danger)" onclick="setGeminiKey('');closeModal();toast('Key removed — using local recognition')">Remove key</button>
+      <button class="btn ghost" style="color:var(--danger)" onclick="setGroqKey('');closeModal();toast('Key removed — using local recognition')">Remove key</button>
       <div style="display:flex;gap:10px">
         <button class="btn" onclick="closeModal()">Cancel</button>
         <button class="btn primary" onclick="saveAIKeyField()">Save</button>
@@ -844,7 +837,7 @@ function openAISettings(){
 }
 function saveAIKeyField(){
   const v = $('#ai-key').value.trim();
-  setGeminiKey(v); closeModal();
+  setGroqKey(v); closeModal();
   toast(v ? 'Key saved — free AI recognition is now on' : 'Key removed', 'ok');
 }
 
