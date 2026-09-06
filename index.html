@@ -771,10 +771,10 @@ function fileToBase64(file){
 async function recognizeWithGemini(file, key){
   const b64 = await fileToBase64(file);
   const mimeType = file.type || 'image/png';
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${encodeURIComponent(key)}`;
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
   const res = await fetch(url, {
     method:'POST',
-    headers:{ 'Content-Type':'application/json' },
+    headers:{ 'Content-Type':'application/json', 'x-goog-api-key': key },
     body: JSON.stringify({
       contents:[{ parts:[
         { inline_data:{ mime_type: mimeType, data: b64 } },
@@ -820,7 +820,7 @@ function openAISettings(){
       <button class="close-x" onclick="closeModal()">&times;</button></div>
     <div class="modal-body">
       <div class="field"><label>Gemini API key</label>
-        <input id="ai-key" type="password" value="${esc(key)}" placeholder="AIza..."></div>
+        <input id="ai-key" type="password" value="${esc(key)}" placeholder="AQ.Ab... or AIza..."></div>
       <div class="rv-note"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0;margin-top:1px"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
         <span>Get a free key at <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener" style="color:var(--brand);font-weight:700">aistudio.google.com/apikey</a> — sign in with any Google account, no credit card needed. Saved only in this browser and sent only to Google to read the image you import. Without a key, screenshots still work using local, on-device recognition (a bit more basic).</span></div>
     </div>
