@@ -941,10 +941,32 @@ async function writeToFile(){
     await w.close();
     const f = await SYNC.handle.getFile(); SYNC._mtime=f.lastModified;
     SYNC.lastSaved=Date.now(); SYNC.status='on'; updateSyncBar();
+    verifyWrite(f); // independent proof of what's actually on disk right now
   }catch(err){
     console.error(err); SYNC.status='err'; updateSyncBar();
     toast('Could not save to the Excel file. If it is open in Excel desktop, close it and edit here.','err');
   }
+}
+async function verifyNow(){
+  if(!SYNC.handle){ toast('No file connected','err'); return; }
+  try{
+    if(!await ensurePerm(SYNC.handle,'readwrite')){ toast('Permission needed — click Reconnect','err'); return; }
+    const f = await SYNC.handle.getFile();
+    const buf = await f.arrayBuffer();
+    const recs = workbookToData(buf);
+    const names = recs.map(r=>r.name||r.supplier).filter(Boolean).slice(0,3).join(', ');
+    toast(`On disk right now: ${recs.length} contact(s) — ${new Date(f.lastModified).toLocaleTimeString()}. ${names?('e.g. '+names):''}`, 'ok');
+    console.log('[verify] full contents:', recs);
+  }catch(e){ console.error(e); toast('Could not read the file to verify','err'); }
+}
+async function verifyWrite(f){
+  try{
+    const buf = await f.arrayBuffer();
+    const recs = workbookToData(buf);
+    console.log('[verify] file size:', f.size, 'bytes · modified:', new Date(f.lastModified).toLocaleTimeString(), '· rows read back:', recs.length, recs.map(r=>r.name||r.supplier));
+    const label = $('#syncbar .sync-meta');
+    if(label) label.title = `Verified on disk: ${f.size} bytes, ${recs.length} contact(s), saved ${new Date(f.lastModified).toLocaleTimeString()}`;
+  }catch(e){ console.warn('[verify] could not re-read file after write', e); }
 }
 function workbookToData(buf){
   const wb=XLSX.read(buf,{type:'array'});
@@ -1027,7 +1049,7 @@ function updateSyncBar(){
     case 'on':
       pill=`<span class="sync-pill sync-on"><span class="sdot" style="background:var(--success)"></span>Live-synced</span>`;
       meta=`<span class="sync-meta"><b>${esc(SYNC.name)}</b>${SYNC.lastSaved?' · saved '+timeAgo(SYNC.lastSaved):''}</span>`;
-      actions=`<button class="btn sm" onclick="reloadSync()">Reload from file</button><button class="btn sm ghost" onclick="disconnect()">Disconnect</button>`;
+      actions=`<button class="btn sm" onclick="verifyNow()">Verify file</button><button class="btn sm" onclick="reloadSync()">Reload from file</button><button class="btn sm ghost" onclick="disconnect()">Disconnect</button>`;
       break;
     case 'saving':
       pill=`<span class="sync-pill sync-save"><span class="sdot" style="background:var(--info)"></span>Saving…</span>`;
