@@ -990,7 +990,8 @@ async function commitBulkAdd(){
 const SITE_URL = 'https://purchasing01.github.io/supplier-emergency-contacts/';
 
 // Full directory export — all contact fields plus an export-only
-// Sustainability Policy/Program column (not stored in the database; always "No").
+// Sustainability Policy/Program column (not stored in the database; left blank
+// since we don't have the actual per-supplier data — never guess a value).
 const FULL_COLUMNS = [
   { header:'Supplier',      wch:26, get:c=>c.supplier },
   { header:'Category',      wch:14, get:c=>c.category },
@@ -999,7 +1000,7 @@ const FULL_COLUMNS = [
   { header:'Phone',         wch:16, get:c=>c.phone },
   { header:'Email',         wch:30, get:c=>c.email },
   { header:'Notes',         wch:24, get:c=>c.notes||'' },
-  { header:'Sustainability Policy/Program', wch:28, get:c=>'No' },
+  { header:'Sustainability Policy/Program', wch:28, get:c=>'' },
 ];
 
 // 24/7 export — exactly these 5 columns, in this order, nothing else.
