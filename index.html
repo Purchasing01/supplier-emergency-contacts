@@ -988,20 +988,45 @@ async function commitBulkAdd(){
    EXPORT — EXCEL
    ============================================================ */
 const SITE_URL = 'https://purchasing01.github.io/supplier-emergency-contacts/';
-const HEADERS = ['Supplier','Category','Contact','Role / Title','Phone','Email','Notes'];
-function dataToWorkbook(sourceRows, bannerLabel){
+
+// Full directory export — all contact fields plus an export-only
+// Sustainability Policy/Program column (not stored in the database; always "No").
+const FULL_COLUMNS = [
+  { header:'Supplier',      wch:26, get:c=>c.supplier },
+  { header:'Category',      wch:14, get:c=>c.category },
+  { header:'Contact',       wch:20, get:c=>c.name },
+  { header:'Role / Title',  wch:26, get:c=>c.role },
+  { header:'Phone',         wch:16, get:c=>c.phone },
+  { header:'Email',         wch:30, get:c=>c.email },
+  { header:'Notes',         wch:24, get:c=>c.notes||'' },
+  { header:'Sustainability Policy/Program', wch:28, get:c=>'No' },
+];
+
+// 24/7 export — exactly these 5 columns, in this order, nothing else.
+const COLUMNS_247 = [
+  { header:'Supplier', wch:26, get:c=>c.supplier },
+  { header:'Contact',  wch:20, get:c=>c.name },
+  { header:'Role',     wch:24, get:c=>c.role },
+  { header:'Number',   wch:16, get:c=>c.phone },
+  { header:'Email',    wch:30, get:c=>c.email },
+];
+
+function dataToWorkbook(sourceRows, bannerLabel, columns){
+  columns = columns || FULL_COLUMNS;
+  const headers = columns.map(col=>col.header);
+  const lastCol = headers.length - 1;
   const rows = (sourceRows || DATA).slice().sort((a,b)=>a.supplier.localeCompare(b.supplier)||a.name.localeCompare(b.name));
   const label = bannerLabel || `Live directory: ${SITE_URL}`;
   const aoa = [
-    [label, '', '', '', '', '', ''],
-    HEADERS,
-    ...rows.map(c=>[c.supplier, c.category, c.name, c.role, c.phone, c.email, c.notes||''])
+    [label, ...Array(lastCol).fill('')],
+    headers,
+    ...rows.map(c=>columns.map(col=>col.get(c)))
   ];
   const ws = XLSX.utils.aoa_to_sheet(aoa);
-  ws['!merges'] = [{ s:{r:0,c:0}, e:{r:0,c:6} }];
+  ws['!merges'] = [{ s:{r:0,c:0}, e:{r:0,c:lastCol} }];
 
   // Banner row (row 1): brand-red fill, white bold text, clickable link
-  for(let c=0;c<=6;c++){
+  for(let c=0;c<=lastCol;c++){
     const addr = XLSX.utils.encode_cell({r:0,c});
     if(!ws[addr]) ws[addr] = { t:'s', v:'' };
     ws[addr].s = { fill:{patternType:'solid', fgColor:{rgb:'9B1C1C'}}, font:{bold:true, color:{rgb:'FFFFFF'}, sz:11}, alignment:{vertical:'center'} };
@@ -1009,14 +1034,14 @@ function dataToWorkbook(sourceRows, bannerLabel){
   ws['A1'].l = { Target: SITE_URL, Tooltip: 'Open the live Supplier Emergency Directory' };
 
   // Header row (row 2): navy fill, white bold text — never transparent
-  HEADERS.forEach((h,c)=>{
+  headers.forEach((h,c)=>{
     const addr = XLSX.utils.encode_cell({r:1,c});
     ws[addr].s = { fill:{patternType:'solid', fgColor:{rgb:'450A0A'}}, font:{bold:true, color:{rgb:'FFFFFF'}}, alignment:{vertical:'center'} };
   });
 
-  ws['!cols']=[{wch:26},{wch:14},{wch:20},{wch:26},{wch:16},{wch:30},{wch:24}];
+  ws['!cols']=columns.map(col=>({wch:col.wch||20}));
   ws['!rows']=[{hpt:22},{hpt:20}];
-  ws['!autofilter']={ref:XLSX.utils.encode_range({s:{r:1,c:0},e:{r:Math.max(1+rows.length,2),c:6}})};
+  ws['!autofilter']={ref:XLSX.utils.encode_range({s:{r:1,c:0},e:{r:Math.max(1+rows.length,2),c:lastCol}})};
   ws['!freeze']={xSplit:0,ySplit:2};
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Suppliers');
@@ -1024,13 +1049,13 @@ function dataToWorkbook(sourceRows, bannerLabel){
 }
 function exportExcel(){
   if(!DATA.length){ toast('Nothing to export yet','err'); return; }
-  XLSX.writeFile(dataToWorkbook(), `JSL_Supplier_Emergency_Directory_${stamp()}.xlsx`);
+  XLSX.writeFile(dataToWorkbook(null, null, FULL_COLUMNS), `JSL_Supplier_Emergency_Directory_${stamp()}.xlsx`);
   toast('Excel copy downloaded','ok');
 }
 function exportExcel247(){
   const rows = DATA.filter(c=>c.is247);
   if(!rows.length){ toast('No 24/7 contacts yet — check "24/7 emergency contact" on a contact first','err'); return; }
-  const wb = dataToWorkbook(rows, `24/7 Emergency Contact Directory: ${SITE_URL}`);
+  const wb = dataToWorkbook(rows, `24/7 Emergency Contact Directory: ${SITE_URL}`, COLUMNS_247);
   XLSX.writeFile(wb, `JSL_24-7_Contact_Directory_${stamp()}.xlsx`);
   toast(`${rows.length} 24/7 contact${rows.length>1?'s':''} exported`,'ok');
 }
